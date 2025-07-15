@@ -38,10 +38,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Process the query with session
-    const responseText = await PdfProcessingService.processQuery(body.question, sessionId)
+    const result = await PdfProcessingService.queryPDF(body.question, sessionId)
+    
+    if (!result.success) {
+      const response: ChatResponse = {
+        response: result.error || 'Query processing failed',
+        error: result.error,
+        sessionId
+      }
+      return NextResponse.json(response, { status: 400 })
+    }
     
     const response: ChatResponse = {
-      response: responseText,
+      response: result.answer || 'No answer generated',
       sessionId: sessionId
     }
 

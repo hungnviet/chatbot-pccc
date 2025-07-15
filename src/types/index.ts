@@ -55,6 +55,9 @@ export interface PdfProcessingResult {
   documentsCount?: number
 }
 
+// Import ErrorType from services
+import { ErrorType } from '../services/types'
+
 export interface UserSession {
   sessionId: string
   vectorstore: MemoryVectorStore | null
@@ -62,6 +65,6 @@ export interface UserSession {
   pdfName: string | null
   createdAt: Date
   lastAccessed: Date
-  processingErrors?: string[]
-  vectorStoreStatus?: 'created' | 'failed' | 'fallback' | 'not_created'
+  processingErrors: Array<{ type: ErrorType; message: string; timestamp: Date }>
+  vectorStoreStatus: 'not_created' | 'creating' | 'ready' | 'error'
 }

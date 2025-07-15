@@ -10,7 +10,7 @@ export async function GET(request: Request) {
     
     if (sessionId) {
       // Get detailed session status including vector database information
-      const status = PdfProcessingService.getDetailedSessionStatus(sessionId)
+      const status = PdfProcessingService.getSessionStatus(sessionId)
       const response: HealthResponse & {
         vector_store_status?: string
         documents_count?: number
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
         processing_errors?: string[]
       } = {
         status: "healthy",
-        agent_available: status.agent_available,
+        agent_available: status.session_exists,
         vectorstore_available: status.vectorstore_available,
         pdf_uploaded: status.pdf_uploaded,
         current_pdf: status.current_pdf || undefined,
@@ -26,7 +26,9 @@ export async function GET(request: Request) {
         vector_store_status: status.vector_store_status,
         documents_count: status.documents_count,
         last_accessed: status.last_accessed,
-        processing_errors: status.processing_errors
+        processing_errors: status.processing_errors?.map(err => 
+          typeof err === 'string' ? err : err.message
+        )
       }
       return NextResponse.json(response)
     } else {

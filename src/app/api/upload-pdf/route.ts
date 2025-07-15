@@ -84,7 +84,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Process the PDF from buffer with session support
-    const result = await PdfProcessingService.processPdfBuffer(buffer, file.name, sessionId || undefined)
+    // First create a File object from buffer
+    const fileObject = new File([buffer], file.name, { type: 'application/pdf' })
+    const result = await PdfProcessingService.processPDF(fileObject, sessionId || PdfProcessingService.createSession())
 
     if (result.success) {
       const response: UploadResponse = {
