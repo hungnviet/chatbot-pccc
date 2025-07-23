@@ -269,7 +269,10 @@ export class PdfProcessingService {
         // Format search results for LLM
         const context = SearchService.formatSearchResults(searchResult.results)
         
-        // Generate answer using LLM
+        console.log(`Search context length: ${context.length} characters`)
+        console.log(`Found ${searchResult.results.length} relevant document sections`)
+        
+        // Generate answer using LLM with RAG
         const llmResult = await LLMService.generateResponse(question, context)
         
         if (!llmResult.success) {
@@ -279,7 +282,7 @@ export class PdfProcessingService {
           }
         }
 
-        console.log(`Query processed successfully for session: ${sessionId}`)
+        console.log(`RAG pipeline completed successfully for session: ${sessionId}`)
         
         return {
           success: true,

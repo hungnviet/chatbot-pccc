@@ -71,7 +71,7 @@ export class SearchService {
         const result = await VectorStoreService.similaritySearchWithScore(
           vectorStore,
           query,
-          maxResults * 2 // Get more results to filter by score
+          maxResults * 3 // Get more results to filter by score and relevance
         )
         
         if (!result.success) {
@@ -105,7 +105,7 @@ export class SearchService {
         searchResults = result.results || []
       }
 
-      // Process results
+      // Process results with improved filtering
       const processedResults: SearchResult[] = []
       
       for (const result of searchResults) {
@@ -114,12 +114,21 @@ export class SearchService {
         
         if (Array.isArray(result)) {
           [doc, score] = result
-          // Filter by minimum score if specified
+          // Apply better score filtering - only include highly relevant results
           if (minScore > 0 && score < minScore) {
+            continue
+          }
+          // Default minimum relevance threshold
+          if (score && score < 0.1) {
             continue
           }
         } else {
           doc = result
+        }
+        
+        // Filter out very short content that might not be useful
+        if (doc.pageContent.trim().length < 50) {
+          continue
         }
         
         processedResults.push({
@@ -129,13 +138,13 @@ export class SearchService {
           source: doc.metadata?.source
         })
         
-        // Limit results
+        // Limit results to top matches
         if (processedResults.length >= maxResults) {
           break
         }
       }
 
-      console.log(`Vector search found ${processedResults.length} results`)
+      console.log(`Vector search found ${processedResults.length} high-quality results`)
 
       return {
         success: true,
@@ -395,9 +404,38 @@ export class SearchService {
   }
 
   /**
-   * Format search results for display
+   * Format search results for LLM context with better structure
    */
   static formatSearchResults(results: SearchResult[]): string {
+    if (!results || results.length === 0) {
+      return 'No relevant information found in the uploaded document.'
+    }
+
+    // Create a well-structured context for the LLM
+    const formattedResults = results
+      .slice(0, 5) // Limit to top 5 most relevant results
+      .map((result, index) => {
+        const content = result.content.trim()
+        const relevanceScore = result.score ? `(Relevance: ${result.score.toFixed(3)})` : ''
+        const sourceInfo = result.source ? `[Source: ${result.source}]` : '[Source: Uploaded PDF]'
+        
+        return `--- Relevant Section ${index + 1} ---
+${content}
+${sourceInfo} ${relevanceScore}`
+      })
+      .join('\n\n')
+
+    return `=== RELEVANT INFORMATION FROM DOCUMENT ===
+
+${formattedResults}
+
+=== END OF RELEVANT INFORMATION ===`
+  }
+
+  /**
+   * Format search results for display only (shorter version)
+   */
+  static formatSearchResultsForDisplay(results: SearchResult[]): string {
     if (!results || results.length === 0) {
       return 'No relevant information found.'
     }

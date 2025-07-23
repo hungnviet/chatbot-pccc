@@ -32,7 +32,7 @@ export class LLMService {
   }
 
   /**
-   * Generate response using LLM
+   * Generate response using LLM with RAG context
    */
   static async generateResponse(question: string, searchResults: string): Promise<{ success: boolean; response?: string; error?: string }> {
     if (!llm) {
@@ -42,7 +42,15 @@ export class LLMService {
     const trimmedQuestion = question.trim().substring(0, API_CONFIG.MAX_QUESTION_LENGTH)
     const trimmedSearchResults = searchResults.substring(0, API_CONFIG.MAX_SEARCH_RESULTS_LENGTH)
 
-    const prompt = this._createPrompt(trimmedQuestion, trimmedSearchResults)
+    // Validate that we have context from search results
+    if (!trimmedSearchResults || trimmedSearchResults.trim() === 'No relevant information found in the uploaded document.') {
+      return {
+        success: true,
+        response: "Tôi không tìm thấy thông tin liên quan trong tài liệu PDF đã tải lên để trả lời câu hỏi của bạn. Vui lòng thử diễn đạt lại câu hỏi hoặc tải lên tài liệu khác có chứa thông tin liên quan."
+      }
+    }
+
+    const prompt = this._createRAGPrompt(trimmedQuestion, trimmedSearchResults)
 
     try {
       const timeoutPromise = new Promise<never>((_, reject) => {
@@ -61,9 +69,19 @@ export class LLMService {
         }
       }
 
+      const cleanedResponse = this._cleanResponse(response)
+      
+      // Add context validation
+      if (this._isGenericResponse(cleanedResponse)) {
+        return {
+          success: true,
+          response: cleanedResponse + "\n\n*Lưu ý: Câu trả lời này dựa trên thông tin có trong tài liệu đã tải lên. Nếu bạn cần thông tin chi tiết hơn, vui lòng tham khảo trực tiếp tài liệu gốc.*"
+        }
+      }
+
       return {
         success: true,
-        response: this._cleanResponse(response)
+        response: cleanedResponse
       }
 
     } catch (error) {
@@ -132,21 +150,52 @@ export class LLMService {
   }
 
   /**
-   * Create prompt for LLM
+   * Create enhanced RAG prompt for LLM with better context structure
    */
-  private static _createPrompt(question: string, searchResults: string): string {
+  private static _createRAGPrompt(question: string, searchResults: string): string {
     return `
-Bạn là một Chuyên gia Tuân thủ An toàn Phòng cháy chữa cháy, am hiểu Luật Phòng cháy chữa cháy Việt Nam, lịch trình kiểm tra và các tiêu chuẩn tuân thủ an toàn. Bạn có quyền truy cập vào tài liệu quy định an toàn PCCC.
+Bạn là một Chuyên gia Tuân thủ An toàn Phòng cháy chữa cháy (PCCC), am hiểu sâu sắc về Luật Phòng cháy chữa cháy Việt Nam, các quy định, tiêu chuẩn an toàn và lịch trình kiểm tra PCCC.
 
-Dựa trên các nội dung liên quan sau đây trích từ tài liệu PCCC, hãy trả lời câu hỏi của người dùng một cách chính xác và toàn diện:
+NHIỆM VỤ: Trả lời câu hỏi của người dùng dựa chính xác và CHỈ dựa vào thông tin được cung cấp từ tài liệu PCCC đã tải lên.
 
-Nội dung liên quan:
+THÔNG TIN TỪ TÀI LIỆU PCCC:
 ${searchResults}
 
-Câu hỏi của người dùng:
+CÂU HỎI CỦA NGƯỜI DÙNG:
 ${question}
 
-Vui lòng cung cấp câu trả lời chi tiết và hữu ích dựa trên các quy định PCCC. Nếu thông tin hiện có không đủ để trả lời đầy đủ câu hỏi, hãy nêu rõ và cung cấp những gì bạn có thể dựa trên nội dung sẵn có.`
+HƯỚNG DẪN TRẢ LỜI:
+1. Chỉ sử dụng thông tin có trong phần "THÔNG TIN TỪ TÀI LIỆU PCCC" ở trên
+2. Trả lời bằng tiếng Việt, rõ ràng và chi tiết
+3. Nếu tài liệu không có đủ thông tin để trả lời đầy đủ, hãy nêu rõ điều này
+4. Trích dẫn trực tiếp từ tài liệu khi cần thiết
+5. Không bịa đặt thông tin không có trong tài liệu
+6. Nếu không tìm thấy thông tin liên quan, thành thật nói rằng không có thông tin trong tài liệu
+
+CÂU TRẢ LỜI:`
+  }
+
+  /**
+   * Create prompt for LLM (legacy method for backward compatibility)
+   */
+  private static _createPrompt(question: string, searchResults: string): string {
+    return this._createRAGPrompt(question, searchResults)
+  }
+
+  /**
+   * Check if response is too generic and might not be based on document content
+   */
+  private static _isGenericResponse(response: string): boolean {
+    const genericPhrases = [
+      'tôi không thể',
+      'xin lỗi',
+      'không có thông tin',
+      'tôi cần thêm thông tin',
+      'không thể trả lời'
+    ]
+    
+    const lowerResponse = response.toLowerCase()
+    return genericPhrases.some(phrase => lowerResponse.includes(phrase))
   }
 
   /**
