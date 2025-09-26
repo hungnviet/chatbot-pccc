@@ -12,6 +12,10 @@ export interface Message {
 export interface ChatResponse {
   response: string
   source?: string
+  // Extended fields from external API
+  sources?: unknown[]
+  suggestions?: string[]
+  notice?: string
   requires_upload?: boolean
   error?: string
   sessionId?: string

@@ -62,3 +62,13 @@ export const API_CONFIG = {
   MAX_SEARCH_RESULTS_LENGTH: 8000,
   MAX_RESPONSE_LENGTH: 10000
 } as const
+
+// External API integration
+export const EXTERNAL_API = {
+  ENABLED: process.env.EXTERNAL_API_ENABLED === 'true',
+  BASE_URL: process.env.EXTERNAL_API_BASE_URL || 'http://127.0.0.1:8000',
+  PATHS: {
+    UPLOAD: '/upload',
+    CHAT: '/chat'
+  }
+} as const

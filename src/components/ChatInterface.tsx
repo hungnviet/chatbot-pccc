@@ -216,7 +216,35 @@ export default function ChatInterface() {
         isError: data.requires_upload ? true : false,
       }
 
-      setMessages(prev => [...prev, botMessage])
+      const extraMessages: Message[] = [botMessage]
+      if (data.notice) {
+        extraMessages.push({
+          id: (Date.now() + 2).toString(),
+          content: `⚠️ Lưu ý: ${data.notice}`,
+          sender: 'bot',
+          timestamp: new Date(),
+        })
+      }
+      if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
+        const suggestionsText = data.suggestions.map((s, i) => `${i + 1}. ${s}`).join('\n')
+        extraMessages.push({
+          id: (Date.now() + 3).toString(),
+          content: `Gợi ý câu hỏi tiếp theo:\n${suggestionsText}`,
+          sender: 'bot',
+          timestamp: new Date(),
+        })
+      }
+      if (Array.isArray(data.sources) && data.sources.length > 0) {
+        const sourcesText = data.sources.map((src, i) => formatSourceItem(src, i)).join('\n')
+        extraMessages.push({
+          id: (Date.now() + 4).toString(),
+          content: `Nguồn trích dẫn:\n${sourcesText}`,
+          sender: 'bot',
+          timestamp: new Date(),
+        })
+      }
+
+      setMessages(prev => [...prev, ...extraMessages])
       
       // If upload is required, show upload prompt
       if (data.requires_upload) {
@@ -254,6 +282,30 @@ export default function ChatInterface() {
 
   const formatTimestamp = (date: Date) => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  }
+
+  // Format external response extras for display
+  const formatSourceItem = (item: unknown, index: number): string => {
+    try {
+      if (typeof item === 'string') return `${index + 1}. ${item}`
+      if (typeof item === 'object' && item !== null) {
+        const anyItem = item as Record<string, unknown>
+        const title = (anyItem.title || anyItem.name || anyItem.source || anyItem.filename) as string | undefined
+        const page = anyItem.page as number | string | undefined
+        const url = anyItem.url as string | undefined
+        const snippet = (anyItem.snippet || anyItem.text || anyItem.content) as string | undefined
+        const parts: string[] = []
+        if (title) parts.push(String(title))
+        if (page !== undefined) parts.push(`trang ${page}`)
+        if (url) parts.push(String(url))
+        if (!title && !page && !url && snippet) parts.push(snippet.slice(0, 160) + (snippet.length > 160 ? '…' : ''))
+        if (parts.length === 0) return `${index + 1}. ${JSON.stringify(item).slice(0, 200)}${JSON.stringify(item).length > 200 ? '…' : ''}`
+        return `${index + 1}. ${parts.join(' · ')}`
+      }
+      return `${index + 1}. ${String(item)}`
+    } catch {
+      return `${index + 1}. ${String(item)}`
+    }
   }
 
   const resetSession = async () => {

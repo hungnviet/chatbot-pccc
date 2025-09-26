@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { PdfProcessingService } from '@/services/pdfProcessingService'
+import { EXTERNAL_API } from '@/services/constants'
+import { externalApiClient } from '@/services'
 import { UploadResponse } from '@/types'
 
 export async function POST(request: NextRequest) {
@@ -45,13 +47,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 400 })
     }
 
-    // Convert file to buffer with error handling
-    let buffer: Buffer
+    // Convert file to ArrayBuffer with error handling
+    let arrayBuffer: ArrayBuffer
     try {
-      const arrayBuffer = await file.arrayBuffer()
-      buffer = Buffer.from(arrayBuffer)
-      
-      if (buffer.length === 0) {
+      arrayBuffer = await file.arrayBuffer()
+      if (arrayBuffer.byteLength === 0) {
         throw new Error("File appears to be empty")
       }
     } catch (error) {
@@ -66,7 +66,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 400 })
     }
     
-    console.log(`Processing PDF: ${file.name} (${buffer.length} bytes)`)
+    console.log(`Processing PDF: ${file.name} (${arrayBuffer.byteLength} bytes)`) 
+
+    // If external API is enabled, proxy the upload and short-circuit
+    if (EXTERNAL_API.ENABLED) {
+      try {
+        // Create a File object compatible with external client
+        const fileObject = new File([arrayBuffer], file.name, { type: 'application/pdf' })
+        const external = await externalApiClient.upload(fileObject)
+
+        // Maintain a local session for UI flow, even though external handles processing
+        const ensuredSession = sessionId || PdfProcessingService.createSession()
+
+        const response: UploadResponse = {
+          message: external.message || 'File uploaded successfully. Processing will continue in the background.',
+          filename: external.filename || file.name,
+          agent_ready: true,
+          sessionId: ensuredSession
+        }
+        return NextResponse.json(response)
+      } catch (error) {
+        console.error('External upload error:', error)
+        const response: UploadResponse = {
+          message: 'External upload failed',
+          filename: file.name,
+          agent_ready: false,
+          sessionId: sessionId || ''
+        }
+        return NextResponse.json(response, { status: 502 })
+      }
+    }
 
     // Initialize LLM with error handling
     try {
@@ -84,8 +113,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Process the PDF from buffer with session support
-    // First create a File object from buffer
-    const fileObject = new File([buffer], file.name, { type: 'application/pdf' })
+    // First create a File object from arrayBuffer
+    const fileObject = new File([arrayBuffer], file.name, { type: 'application/pdf' })
     const result = await PdfProcessingService.processPDF(fileObject, sessionId || PdfProcessingService.createSession())
 
     if (result.success) {

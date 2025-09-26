@@ -9,6 +9,9 @@ export { LLMService } from './llm/llmService'
 export * from './types'
 export * from './constants'
 
+// External API client
+export { externalApiClient } from './llm/externalApiClient'
+
 // Export search types
 export type {
   SearchOptions,
