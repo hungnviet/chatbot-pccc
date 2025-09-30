@@ -20,6 +20,7 @@ export default function ChatInterface() {
   const [backendStatus, setBackendStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [pdfUploaded, setPdfUploaded] = useState(false)
   const [currentPdf, setCurrentPdf] = useState<string | null>(null)
+  const [uploadedFiles, setUploadedFiles] = useState<string[]>([])
   const [sessionId, setSessionId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -101,9 +102,10 @@ export default function ChatInterface() {
         console.log('Session ID stored:', data.sessionId)
       }
       
+      const isFirstUpload = uploadedFiles.length === 0
       const successMessage: Message = {
         id: (Date.now() + 1).toString(),
-        content: `✅ Tải lên PDF thành công! Tệp: ${data.filename}\n\nTài liệu của bạn đã được xử lý và tôi sẵn sàng trả lời các câu hỏi về quy định an toàn phòng cháy và tuân thủ PCCC. Bạn muốn biết gì?`,
+        content: `✅ Tải lên File thành công! Tệp: ${data.filename}\n\n${isFirstUpload ? 'Tài liệu của bạn đã được xử lý và tôi sẵn sàng trả lời các câu hỏi về quy định an toàn phòng cháy và tuân thủ PCCC. Bạn muốn biết gì?' : 'Tài liệu bổ sung đã được thêm vào cơ sở dữ liệu. Bạn có thể tiếp tục đặt câu hỏi về các quy định an toàn phòng cháy và tuân thủ PCCC.'}`,
         sender: 'bot',
         timestamp: new Date(),
       }
@@ -111,6 +113,7 @@ export default function ChatInterface() {
       setMessages(prev => [...prev, successMessage])
       setPdfUploaded(true)
       setCurrentPdf(data.filename)
+      setUploadedFiles(prev => [...prev, data.filename])
       
       // Update the initial welcome message
       setMessages(prev => {
@@ -118,7 +121,7 @@ export default function ChatInterface() {
         if (newMessages[0]?.id === '1') {
           newMessages[0] = {
             ...newMessages[0],
-            content: `Xin chào! Tôi là Trợ lý Tuân thủ An toàn Phòng cháy chữa cháy của bạn. Tôi hiện đã có quyền truy cập vào tài liệu PCCC đã tải lên (${data.filename}) và có thể giúp bạn trả lời các câu hỏi về quy định an toàn phòng cháy và yêu cầu an toàn công trình.`
+            content: `Xin chào! Tôi là Trợ lý Tuân thủ An toàn Phòng cháy chữa cháy của bạn. Tôi hiện đã có quyền truy cập vào tài liệu PCCC đã tải lên và có thể giúp bạn trả lời các câu hỏi về quy định an toàn phòng cháy và yêu cầu an toàn công trình.`
           }
         }
         return newMessages
@@ -142,31 +145,23 @@ export default function ChatInterface() {
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
-      if (file.type !== 'application/pdf') {
-        alert('Vui lòng chọn tệp PDF')
+      // Supported file types
+      const supportedTypes = [
+        'application/pdf',
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation', // PPTX
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // DOCX
+        'application/msword', // DOC
+        'application/vnd.ms-powerpoint', // PPT
+        'application/vnd.oasis.opendocument.text', // ODT
+        'application/vnd.oasis.opendocument.presentation' // ODP
+      ]
+      
+      if (!supportedTypes.includes(file.type)) {
+        alert('Vui lòng chọn tệp PDF, DOC, DOCX, PPT, hoặc PPTX')
         return
       }
       
-      // If there's an existing session with a PDF, ask for confirmation
-      if (currentPdf && sessionId) {
-        const confirmed = window.confirm(
-          `Bạn đã có tài liệu "${currentPdf}" đang được xử lý. Bạn có muốn thay thế bằng tài liệu mới không? Điều này sẽ kết thúc phiên hiện tại.`
-        )
-        
-        if (!confirmed) {
-          // Reset file input
-          if (fileInputRef.current) {
-            fileInputRef.current.value = ''
-          }
-          return
-        }
-        
-        // Reset current session before uploading new file
-        setSessionId(null)
-        setPdfUploaded(false)
-        setCurrentPdf(null)
-        localStorage.removeItem('pccc-session-id')
-      }
+      // Allow multiple file uploads - no confirmation needed
       
       uploadPdf(file)
     }
@@ -342,6 +337,7 @@ export default function ChatInterface() {
       setSessionId(null)
       setPdfUploaded(false)
       setCurrentPdf(null)
+      setUploadedFiles([])
       setInputMessage('')
 
       // Clear session from localStorage
@@ -396,10 +392,15 @@ export default function ChatInterface() {
             <div>
               <h1 className="text-xl font-bold">Trợ lý Tuân thủ An toàn Phòng cháy chữa cháy</h1>
               <p className="text-red-100 text-sm">Chuyên gia PCCC & An toàn Công trình</p>
-              {currentPdf && (
+              {uploadedFiles.length > 0 && (
                 <div className="flex items-center space-x-1 mt-1">
                   <FileText className="w-3 h-3" />
-                  <span className="text-xs text-red-100">Tài liệu: {currentPdf}</span>
+                  <span className="text-xs text-red-100">
+                    {uploadedFiles.length === 1 
+                      ? `Tài liệu: ${uploadedFiles[0]}`
+                      : `${uploadedFiles.length} tài liệu đã tải lên`
+                    }
+                  </span>
                 </div>
               )}
             </div>
@@ -538,19 +539,26 @@ export default function ChatInterface() {
           </div>
         )}
 
-        {!pdfUploaded && backendStatus === 'online' && (
+        {backendStatus === 'online' && (
           <div className="mb-4 p-4 bg-orange-50 border border-orange-200 rounded-lg">
             <div className="flex items-center space-x-3 mb-3">
               <Upload className="w-5 h-5 text-orange-600" />
               <div>
-                <h3 className="font-medium text-orange-800">Tải lên Tài liệu PCCC</h3>
-                <p className="text-sm text-orange-700">Vui lòng tải lên tài liệu PDF PCCC của bạn để bắt đầu cuộc trò chuyện</p>
+                <h3 className="font-medium text-orange-800">
+                  {pdfUploaded ? 'Tải lên Tài liệu Bổ sung' : 'Tải lên Tài liệu PCCC'}
+                </h3>
+                <p className="text-sm text-orange-700">
+                  {pdfUploaded 
+                    ? 'Tải lên thêm tài liệu PCCC (PDF, DOC, DOCX, PPT, PPTX) để mở rộng cơ sở kiến thức'
+                    : 'Vui lòng tải lên tài liệu PCCC (PDF, DOC, DOCX, PPT, PPTX) của bạn để bắt đầu cuộc trò chuyện'
+                  }
+                </p>
               </div>
             </div>
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf"
+              accept=".pdf,.doc,.docx,.ppt,.pptx,.odt,.odp"
               onChange={handleFileSelect}
               className="hidden"
             />
@@ -567,7 +575,7 @@ export default function ChatInterface() {
               ) : (
                 <>
                   <Upload className="w-4 h-4" />
-                  <span>Chọn Tệp PDF</span>
+                  <span>{pdfUploaded ? 'Tải lên Tài liệu Bổ sung' : 'Chọn Tài liệu'}</span>
                 </>
               )}
             </button>
@@ -593,7 +601,7 @@ export default function ChatInterface() {
             onClick={() => fileInputRef.current?.click()}
             disabled={isUploading || backendStatus === 'offline'}
             className="bg-gradient-to-r from-orange-500 to-red-500 text-white p-3 rounded-xl hover:from-orange-600 hover:to-red-600 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg hover:shadow-xl"
-            title="Tải lên PDF"
+            title={pdfUploaded ? "Tải lên tài liệu bổ sung" : "Tải lên tài liệu"}
           >
             {isUploading ? (
               <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -615,7 +623,7 @@ export default function ChatInterface() {
         <div className="mt-3 text-xs text-gray-500 text-center">
           {pdfUploaded 
             ? "Hỏi các câu hỏi về quy định an toàn phòng cháy, tuân thủ PCCC, quy trình khẩn cấp và yêu cầu an toàn công trình. Sử dụng nút 'Kết thúc phiên' ở trên để tải lên tài liệu mới."
-            : "Tải lên tài liệu PDF PCCC trước, sau đó hỏi các câu hỏi về quy định an toàn phòng cháy và tuân thủ."
+            : "Tải lên tài liệu PCCC (PDF, DOC, DOCX, PPT, PPTX) trước, sau đó hỏi các câu hỏi về quy định an toàn phòng cháy và tuân thủ."
           }
         </div>
 
@@ -623,7 +631,7 @@ export default function ChatInterface() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf"
+          accept=".pdf,.doc,.docx,.ppt,.pptx,.odt,.odp"
           onChange={handleFileSelect}
           className="hidden"
         />

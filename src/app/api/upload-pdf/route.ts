@@ -23,12 +23,15 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file type
-    if (!file.name.toLowerCase().endsWith('.pdf')) {
+    const supportedExtensions = ['.pdf', '.doc', '.docx', '.ppt', '.pptx', '.odt', '.odp']
+    const fileExtension = '.' + file.name.toLowerCase().split('.').pop()
+    
+    if (!supportedExtensions.includes(fileExtension)) {
       const response: UploadResponse = {
         message: "Invalid file type",
         filename: file.name,
         agent_ready: false,
-        error: "Only PDF files are allowed",
+        error: "Only PDF, DOC, DOCX, PPT, PPTX, ODT, ODP files are allowed",
         sessionId: sessionId || ''
       }
       return NextResponse.json(response, { status: 400 })
@@ -66,13 +69,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 400 })
     }
     
-    console.log(`Processing PDF: ${file.name} (${arrayBuffer.byteLength} bytes)`) 
+    console.log(`Processing document: ${file.name} (${arrayBuffer.byteLength} bytes)`) 
 
     // If external API is enabled, proxy the upload and short-circuit
     if (EXTERNAL_API.ENABLED) {
       try {
         // Create a File object compatible with external client
-        const fileObject = new File([arrayBuffer], file.name, { type: 'application/pdf' })
+        const fileObject = new File([arrayBuffer], file.name, { type: file.type })
         const external = await externalApiClient.upload(fileObject)
 
         // Maintain a local session for UI flow, even though external handles processing
@@ -112,16 +115,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { status: 503 })
     }
 
-    // Process the PDF from buffer with session support
+    // Process the document from buffer with session support
     // First create a File object from arrayBuffer
-    const fileObject = new File([arrayBuffer], file.name, { type: 'application/pdf' })
+    const fileObject = new File([arrayBuffer], file.name, { type: file.type })
     const result = await PdfProcessingService.processPDF(fileObject, sessionId || PdfProcessingService.createSession())
 
     if (result.success) {
       const response: UploadResponse = {
         message: result.error ? 
-          "PDF uploaded successfully with warnings" : 
-          "PDF uploaded and processed successfully",
+          "Document uploaded successfully with warnings" : 
+          "Document uploaded and processed successfully",
         filename: file.name,
         agent_ready: true,
         sessionId: result.sessionId,
@@ -130,10 +133,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response)
     } else {
       const response: UploadResponse = {
-        message: "Failed to process PDF file",
+        message: "Failed to process document file",
         filename: file.name,
         agent_ready: false,
-        error: result.error || "PDF processing failed",
+        error: result.error || "Document processing failed",
         sessionId: result.sessionId
       }
       return NextResponse.json(response, { status: 500 })
